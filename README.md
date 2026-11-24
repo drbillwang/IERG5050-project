@@ -7,4 +7,4 @@ Public course page for Tamarix Research, an agentic research system for fundamen
 - Page: `index.html`
 - Live service (login required; client data is not public): https://tamarixresearch.com/
 
-Architecture diagrams are the original vector figures, exported as SVG with text converted to paths so they do not reflow in the browser.
+Architecture diagrams are the original vector figures, exported as SVG with text converted to paths so they do not reflow in the browser. Live product screenshots in Section 7 are stored under `figures/demo/`.

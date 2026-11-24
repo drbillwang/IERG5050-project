@@ -256,6 +256,30 @@ tr.total td { border-bottom: none; font-weight: 600; }
   letter-spacing: 0.02em;
 }
 
+figure.demo-shot {
+  margin: 1.05rem 0 1.55rem;
+  max-width: var(--wide);
+}
+
+figure.demo-shot a.shot-link {
+  display: block;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+  background: white;
+  box-shadow: 0 1px 4px rgba(28, 25, 21, 0.06);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+figure.demo-shot a.shot-link:hover {
+  border-color: var(--rule);
+  box-shadow: 0 3px 10px rgba(28, 25, 21, 0.1);
+}
+
+figure.demo-shot figcaption {
+  max-width: var(--wide);
+}
+
 .refs { padding-left: 1.2rem; max-width: var(--max); }
 .refs li { margin: 0.55rem 0; font-size: 0.95rem; }
 
