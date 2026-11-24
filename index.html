@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tamarix Research: Building AI Agents for Investment Insight</title>
+  <meta name="description" content="IERG 5050 Fall 2026 Option 1 project webpage. Student 1155245846. An agentic research system for fundamental investing.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="skip" href="#motivation">Skip to content</a>
+  <div class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#top">Tamarix Research</a>
+      <nav class="nav" aria-label="Sections">
+        <a href="#motivation">Motivation</a>
+        <a href="#problem">Problem</a>
+        <a href="#solution">Approach</a>
+        <a href="#architecture">Architecture</a>
+        <a href="#results">Results</a>
+        <a href="#implementation">Implementation</a>
+        <a href="#demo">Demo</a>
+        <a href="#appendix">Appendix</a>
+      </nav>
+    </div>
+  </div>
+
+  <main class="sheet" id="top">
+    <header class="masthead">
+      <p class="kicker">IERG 5050 · Fall 2026 · Option 1</p>
+      <h1>Tamarix Research: Building AI Agents for Investment Insight</h1>
+      <p class="meta">Student <code>1155245846</code><br>An agentic AI application for fundamental investing</p>
+    </header>
+
+    <section class="abstract" aria-label="Abstract">
+      <p>Tamarix Research is an AI agent built with hedge-fund teams in Hong Kong for fundamental investing. Current language models write fluent market summaries, yet they rarely produce an <em>investment insight</em>. Here, an insight means a specific, decision-useful view that differs from consensus and rests on primary evidence.</p>
+      <p>This report shows how we use academic rigor to solve this commercial problem under tight engineering limits. First, we worked with institutional investors to build a 45-question benchmark and an 18-point grading rubric. We then used GLM-5.2 as a low-cost judge to score every run. Second, we skipped model fine-tuning and ran a lightweight setup on a single Mac Studio. Inspired by recursive self-improvement (RSI), we use an AI critic to diagnose failed traces and merge structural <em>harness</em> fixes, with human spot-checks.</p>
+      <p>Our first system, Simao 1, reached high quality with Claude Opus 4.8 (16.78/18), but API bills hit $7.40 per question. To fix unit economics, we built Simao 2, embedding the same method inside a monthly subscription harness. Midway through deployment, a Claude Code suspension forced a live migration to OpenAI Codex. On Codex, Simao 2 nearly matched top research quality (16.47/18) with zero marginal API cost.</p>
+    </section>
+
+    <section id="motivation">
+      <h2>1. Motivation: a real problem from the investment industry</h2>
+      <div class="prose">
+        <p>Since September 2026, the author has been building Tamarix Research with hedge-fund clients in Hong Kong. Their daily work is fundamental investing: figuring out how a business makes money, what might change, and whether a trade is justified. When we started, our clients already paid for frontier AI tools such as ChatGPT Deep Research and Claude. Those tools can search the web, read filings, and produce long, polished reports in minutes.</p>
+        <p>Yet the portfolio managers were still unhappy. A fluent summary of public opinions is not an edge in institutional investing. If everyone reads the same consensus summary, nobody makes money from it. Our clients did not want a faster report writer; they wanted an AI partner that helps them form and stress-test an independent view.</p>
+        <p>Academic finance agents did not solve this problem either. Recent systems such as FinAgent, FinMem, FinCon, TradingAgents, and FinRobot add memory, tools, and multi-agent debate. However, most academic benchmarks grade these agents by short-term trading profit in a backtest. In real fundamental investing, short-term stock returns are noisy. A sound research thesis can lose money for a month, while sloppy logic can profit from a random market rally. Therefore, we do not use short-term stock returns as ground truth. We set out to build and measure something closer to how real investors think.</p>
+        <p>All system architecture, the 53-tool backend, and both generations of the agent harness were developed solely by the author. Throughout this report, “we” follows standard academic convention or refers to joint rubric design with client portfolio managers.</p>
+      </div>
+    </section>
+
+    <section id="problem">
+      <h2>2. Problem definition: what is an investment insight?</h2>
+      <div class="prose">
+        <p>Modern large language models have strong logic, but by default they repeat the crowd. Trained on internet text and media commentary, they naturally average popular opinions together. Even when given tools, a model often pulls a headline number without checking accounting rules or primary filings. The output sounds careful, yet it offers no real <strong>investment insight</strong>.</p>
+        <p>In our project, an output counts as an investment insight only when it meets four rules:</p>
+        <ol class="rules">
+          <li><strong>Specific.</strong> It makes a clear, testable claim rather than a vague observation.</li>
+          <li><strong>Decision-useful.</strong> It directly informs whether an investment idea is worth taking.</li>
+          <li><strong>Non-consensus.</strong> It states what the market currently believes, then explains where that consensus is wrong or incomplete.</li>
+          <li><strong>Evidence-backed.</strong> Being contrarian alone is useless; every step must follow from verified facts and sound math.</li>
+        </ol>
+        <p>To be trusted by a fund manager, the agent must also show its reasoning chain. It must separate hard facts from assumptions, judge source quality, and keep unknowns visible. It also needs to test counter-arguments and state what new evidence would change its conclusion.</p>
+        <p>A simple example shows this bar. Suppose most investors believe a company’s higher profit margin will last. A real insight might argue that the high margin is temporary because a one-time cost cut will not repeat next year. To earn trust, the agent must pull exact cost items from primary filings, separate reported facts from next year’s assumptions, and stress-test the opposite case.</p>
+        <p>Finally, different investors study the same company in different ways. One fund focuses on supply-chain bottlenecks, while another looks for long-term pricing power. Our core question is practical: can an AI agent follow configurable investor methods and generate true insights instead of polished consensus?</p>
+      </div>
+    </section>
+
+    <section id="solution">
+      <h2>3. Solution approach: academic method meets lean engineering</h2>
+      <div class="prose">
+        <p>We approached this commercial product like an applied research problem. Before writing complex agent code, we needed a scientific way to measure insight. Once we could measure quality, we needed a lean way to improve the agent without training models.</p>
+        <h3>3.1 Measuring insight: investor rubrics and dataset design</h3>
+        <p>How do you turn “investment insight” into a repeatable score? Instead of relying on stock prices, we worked with institutional investors to build a 45-question benchmark and human grading rubrics. Company decisions form the core of the bank, including 7 long-only memos, 4 company memos, and 4 focused company questions. The other groups prevent the agent from becoming a rigid stock template. They test Bitcoin mining costs, engineering physics limits, discounted-cash-flow math, and two multi-turn follow-ups that attack the agent’s prior assumptions.</p>
+      </div>
+
+      <figure id="fig-dataset">
+        <img src="figures/dataset.svg" alt="Horizontal bar chart of 45 benchmark questions across 21 research categories. The longest bars are mixed tasks and long-only memos, with seven questions each.">
+        <figcaption><strong>Figure 1.</strong> Distribution of the 45-question verifying bank across 21 research categories. Full group descriptions are in the appendix.</figcaption>
+      </figure>
+
+      <div class="prose">
+        <p>Every answer is graded from 0 to 18 across six dimensions. Smooth prose earns nothing on its own. If an agent cites a blog instead of an SEC filing, or mixes strict accounting loss (GAAP net loss) with management’s adjusted cash profit (adjusted EBITDA), it loses points. On <strong>CoreWeave (C1, an analysis of the AI cloud provider)</strong>, the memo must separate GAAP loss from adjusted EBITDA and compute three probability-weighted scenarios via <code>python_calc</code>. On <strong>Bitcoin mining (B1)</strong>, it must separate marginal power, cash cost, and full depreciation cost, plus four dated on-chain KPIs. On <strong>Microsoft (MSFT)</strong>, it must build an explicit numerical bridge from memory prices to Azure gross margin.</p>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <caption><strong>Table 1.</strong> The 18-point investor evaluation rubric applied to every benchmark question.</caption>
+          <thead>
+            <tr><th>Dimension</th><th>What the check verifies</th><th class="num">Scale</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>1. Completeness</td><td>Delivers a finished decision memo with no truncated sections</td><td class="num">0–3</td></tr>
+            <tr><td>2. Tool and data grounding</td><td>Calls primary filings or institutional databases rather than secondary blogs</td><td class="num">0–3</td></tr>
+            <tr><td>3. Sourced figures</td><td>Every key number is tied to a verifiable source and date</td><td class="num">0–3</td></tr>
+            <tr><td>4. Logic and counter-view</td><td>Clear reasoning chain plus explicit stress-testing of the opposite side</td><td class="num">0–3</td></tr>
+            <tr><td>5. Accounting caliber</td><td>Separates incompatible metrics (for example, GAAP loss vs. adjusted EBITDA)</td><td class="num">0–3</td></tr>
+            <tr><td>6. Task-specific coverage</td><td>Question-specific checklist (3 cost layers in B1, margin bridge in MSFT)</td><td class="num">0–3</td></tr>
+            <tr class="total"><td>Total</td><td>Unweighted sum across all six rubric checks</td><td class="num">0–18</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="prose">
+        <p>Here we made a deliberate choice that separates a live commercial system from a classroom paper. In a standard paper, we would split the 45 questions into a training set and a held-out test set. In our live service, all 45 questions act as our <strong>training and verifying set</strong>. Why? Because our real test set arrives every day in production: the next unseen question a client asks. Live user queries can go anywhere, so holding back half of 45 items would only blind us. Scores on the 45 questions give a health snapshot of our current harness. Live client feedback then drives the next round of changes.</p>
+        <p>To run rubric checks cheaply at scale, we use <strong>GLM-5.2</strong> as our LLM-as-a-judge. Choosing GLM-5.2 is an economic decision: it is cheap enough for routine runs and smart enough for structured checking. GLM-5.2 averages 13.62/18 when writing memos itself, yet it grades 16.5–16.8/18 outputs from stronger models. Why can a weaker researcher still act as a reliable judge? The reason is <strong>verification–generation asymmetry</strong>: checking an answer against an explicit rubric is far easier than discovering the insight from scratch. When generating a memo, a model must plan multi-step searches and form an original variant view on its own. When judging, the investor rubric already lists the exact items to check. Evaluation thus becomes bounded checklist verification rather than open-ended research. Because GLM-5.2 also appears in our benchmark table, we still spot-check samples by hand to guard against self-preference bias.</p>
+
+        <h3>3.2 Lightweight harness engineering</h3>
+        <p>Once we could measure insight, we faced a practical resource constraint. We are a lean project, not a frontier lab. Today, one Mac Studio handles daily live data collection and serves three institutional investment teams. Training or fine-tuning large models is too expensive, too slow, and unnecessary when frontier models already reason well.</p>
+        <p>Therefore, we never touch model weights or hyperparameters. Instead, we optimize the <strong>harness</strong> — everything wrapped around the frozen model. The harness controls task breakdown, external tool use, adversarial checks, and stop rules. On top of our shared harness, different funds also request bespoke modules, such as custom web crawlers or retrieval over private internal notes. Keeping domain logic inside a modular harness lets one Mac Studio support three teams at minimal overhead.</p>
+
+        <h3>3.3 RSI-inspired critic-assisted harness iteration</h3>
+        <p>Even without weight training, debugging a multi-stage research harness by hand is exhausting. Reading long failure traces across dozens of questions takes days of human effort. To speed this up, we drew inspiration from frontier LLM research on <strong>recursive self-improvement (RSI)</strong> and model-supervising-model pipelines.</p>
+        <p>Frontier labs use critic models to score trajectories and update neural weights automatically. In our service, we adapt that idea into <strong>critic-assisted harness iteration</strong>. GLM-5.2 diagnoses failed traces against the locked rubric and merges structural fixes, while we spot-check merged diffs by hand.</p>
+      </div>
+
+      <figure id="fig-rsi">
+        <img src="figures/rsi.svg" alt="Flow from agent run to AI critic, AI patch proposal, and AI merge. The investor rubric stays read-only. A return arrow updates the harness after a human spot-check.">
+        <figcaption><strong>Figure 2.</strong> RSI-inspired critic-assisted harness iteration. The critic merges question-agnostic structural fixes; a person spot-checks the diffs.</figcaption>
+      </figure>
+
+      <div class="prose">
+        <p>The critic flags recurring workflow failures and inspires general structural gates across four illustrative categories:</p>
+        <ul class="clean">
+          <li><strong>Premature stopping.</strong> Early runs often quit on empty API results or wrote stub answers; tighter completion gates now force fallback searches and return stub memos to the writer.</li>
+          <li><strong>Skipped tool use.</strong> When drafts asserted financial ratios from memory instead of filings or <code>python_calc</code>, workflow gates required primary tool loops and unseated-claim checks before drafting.</li>
+          <li><strong>Missing citations or caveats.</strong> When ledger links or risk caveats vanished during drafting, we added post-draft citation verifiers, and later deterministic source-ID linking in Simao 2.</li>
+          <li><strong>Length and format drift.</strong> When outputs grew bloated, truncated, or skipped counter-views, structural checks enforced required memo sections (summary, risks, conclusion) and length bounds.</li>
+        </ul>
+        <p>Because we use all 45 questions as one verifying bank without a held-out split, editing the harness on these traces could risk <strong>test-set leakage</strong>. If a patch injected domain hints — such as “always split three Bitcoin cost layers” — it would overfit single questions and inflate the results table. To prevent this, we enforce two strict rules. First, the investor rubric stays read-only. Second, merge rules and human spot-checks <strong>only allow question-agnostic structural gates</strong> — such as stop rules, tool checks, length bounds, and format schemas — and revert any item-specific hints.</p>
+      </div>
+    </section>
+
+    <section id="architecture">
+      <h2>4. System architecture: two generations of design</h2>
+      <div class="prose">
+        <p>Guided by our rubric and critic-assisted harness iteration, we built two generations of architecture.</p>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <caption><strong>Table 2.</strong> Architectural comparison between Simao 1 and Simao 2.</caption>
+          <thead>
+            <tr><th>Component</th><th>Simao 1 (API-driven pipeline)</th><th>Simao 2 (subscription CLI harness)</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Execution driver</td><td>Custom Python state machine calling LLM APIs per stage</td><td>OpenAI Codex CLI session driven by skill, checks, and MCP</td></tr>
+            <tr><td>Loop flexibility</td><td>Fixed stages; at most 1 return wave (up to 4 new claims)</td><td>Dynamic; rewrites the plan mid-thread if evidence breaks the frame</td></tr>
+            <tr><td>Red-teaming</td><td>Parallel Support and Attack agents per claim (24-call cap)</td><td>Isolated sub-agents; the red team is blind to the support card</td></tr>
+            <tr><td>Context handling</td><td>Compresses old tool outputs past 80k characters; keeps the last 3 full</td><td>Separate sessions for research, writing, and audit; carry-packs</td></tr>
+            <tr><td>Citation integrity</td><td>Post-draft check flags missing links (does not rewrite)</td><td>MCP assigns numeric URL IDs; code expands IDs into links</td></tr>
+            <tr><td>Numerical audit</td><td>Single-pass writer from the evidence ledger</td><td>Fresh blind session checks internal math (1 retry on conflict)</td></tr>
+            <tr><td>Cost structure</td><td>Per-token API billing ($0.24–$7.40 / query)</td><td>$0 marginal query cost inside a flat monthly subscription</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>4.1 Simao 1: hand-built API pipeline and the cost wall</h3>
+      <div class="prose">
+        <p>Simao 1 is a deep-research pipeline written from scratch in Python. Our Python controller owns the stage order and stop caps, while the LLM chooses tools and claims inside each stage:</p>
+        <ul class="clean">
+          <li><strong>Scout.</strong> A short tool loop (max 2 rounds or 6 calls) checks basic facts and spots where sources disagree.</li>
+          <li><strong>Forge.</strong> With tools turned off, the model turns those tensions into 3 to 6 falsifiable claims.</li>
+          <li><strong>Parallel Support and Attack.</strong> Two agents run per claim — one builds the case, and one attacks it using filings and <code>python_calc</code> (max 10 rounds or 24 calls each).</li>
+          <li><strong>Adjudicate.</strong> With tools off, the model weighs both sides. It may send up to 4 new claims back to Support and Attack once.</li>
+          <li><strong>Memo and citation check.</strong> The model writes the memo from the verified ledger. A final check flags missing citations or dropped caveats and appends up to 8 open questions.</li>
+        </ul>
+      </div>
+
+      <figure id="fig-simao1">
+        <img src="figures/simao1.svg" alt="Simao 1 pipeline. A client question goes through Scout and Forge, then splits into a Support agent and an Attack agent, then Adjudicate, a memo, and a citation check. Adjudicate can send at most one wave of new claims back.">
+        <figcaption><strong>Figure 3.</strong> Simao 1 pipeline. Python enforces stage caps, 80k-character trace compression, and at most one return wave.</figcaption>
+      </figure>
+
+      <div class="prose">
+        <p>Simao 1 runs cleanly on one Mac Studio and lets us swap model APIs — MiniMax-M3, GLM-5.2, or Claude Opus 4.8 — with one config line. Yet live client use quickly exposed two flaws. First, the Python state machine is rigid: it cannot rewrite its initial plan if early evidence breaks the question’s frame, and it drops any new lead after one return wave. Second, <strong>API cost collided with customer behavior</strong>. We recommended GLM-5.2 at $1.59 per question, but hedge-fund analysts always picked Claude Opus 4.8 for its sharper reasoning. Because Simao 1 sends long contexts across parallel sub-agents, one Claude Opus 4.8 run averaged <strong>$7.40</strong> (885k input and 119k output tokens). At $7.40 per query, heavy daily use breaks unit economics.</p>
+
+        <h3>4.2 Simao 2: token-plan engineering and a real-world setback</h3>
+        <p>That cost wall pushed us to design <strong>Simao 2</strong>. Frontier labs sell flat monthly subscriptions with large token allowances, whereas APIs bill every token. Simao 2 embeds Simao 1’s exact adversarial method inside a subscription CLI harness — practical “token maxing” that drops marginal query cost to zero. Instead of per-step API calls, we wrap the CLI host with a <strong>research skill</strong> (workflow rules plus optional monopoly, compounder, or bottleneck lenses), <strong>structural checks</strong>, and a <strong>blind audit session</strong>, while serving all 53 financial tools over MCP.</p>
+        <p>Deploying Simao 2 also taught us a real lesson about vendor risk. We first built Simao 2 on <strong>Claude Code</strong>, where early results were strong. Then our Claude account was suspended without warning. With three client teams sending live requests, we could not go offline and wait for an appeal. We immediately migrated the skill, checks, and MCP server onto <strong>OpenAI Codex CLI</strong> (running GPT-6-Astra). Because our research rules sat cleanly above the host CLI, the switch preserved client service without changing our methodology.</p>
+      </div>
+
+      <figure id="fig-simao2">
+        <img src="figures/simao2.svg" alt="Simao 2 architecture. Session 1 is a boxed Codex research thread: plan, scout, optional mechanism learning, prosecute and a blind red team, then adjudicate into a brief. A frame-break loop returns to the plan. Session 2 writes the memo with tools off. Session 3 is a blind numerical audit that can send the memo back once if numbers conflict.">
+        <figcaption><strong>Figure 4.</strong> Simao 2 architecture on Codex CLI. Research, writing, and blind math auditing run in isolated sessions.</figcaption>
+      </figure>
+
+      <div class="prose">
+        <p>Codex also behaves more flexibly than Simao 1. When scouting breaks an initial assumption, Codex rewrites its plan mid-thread. In a live satellite-platform study, a financial page listed headline revenue that was mostly pre-delivery customer prepayments; Simao 2 caught that detail and refused to plug it into a naive sales multiple. On a valuation follow-up, it cited the confirmed company release while keeping an unconfirmed higher rumor clearly labeled beside it. Where two customer contracts conflicted — one holding options, another planning to multi-source — it kept both facts visible.</p>
+      </div>
+    </section>
+
+    <section id="results">
+      <h2>5. Results</h2>
+      <div class="prose">
+        <p>We evaluated all configurations across the 45-question bank using our 18-point rubric (810 points per run). The three Simao 1 rows share the exact same controller and tool caps, isolating model capability. Because Simao 2 pairs Codex CLI with GPT-6-Astra, its score reflects the combined host-and-model system rather than a single-model ablation. Likewise, as an Option 1 application study, we omit standalone web-chatbot baselines (for example, raw ChatGPT or Claude) and component ablations because external bots cannot reach our custom crawlers, non-US filing feeds, or client-private data.</p>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <caption><strong>Table 3.</strong> Benchmark results across all 45 questions. Sample standard deviation is computed over N = 45 items. Codex CLI runs inside a flat subscription without per-call token metering.</caption>
+          <thead>
+            <tr>
+              <th>System</th><th>Model</th><th class="num">Mean</th><th class="num">Total</th>
+              <th class="num">18/18s</th><th>Range (SD)</th><th class="num">Min/Q</th>
+              <th>Tokens (in/out)</th><th class="num">Cost/Q</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Simao 1</td><td>MiniMax-M3</td><td class="num">10.18</td><td class="num">458/810</td><td class="num">0/45</td><td>6–14 (2.05)</td><td class="num">10.8</td><td>642k / 41k</td><td class="num">$0.24</td></tr>
+            <tr><td>Simao 1</td><td>GLM-5.2</td><td class="num">13.62</td><td class="num">613/810</td><td class="num">0/45</td><td>10–16 (1.53)</td><td class="num">18.4</td><td>905k / 74k</td><td class="num">$1.59</td></tr>
+            <tr><td>Simao 1</td><td>Claude Opus 4.8</td><td class="num">16.78</td><td class="num">755/810</td><td class="num">7/45</td><td>14–18 (0.85)</td><td class="num">26.7</td><td>885k / 119k</td><td class="num">$7.40</td></tr>
+            <tr><td>Simao 2</td><td>GPT-6-Astra</td><td class="num">16.47</td><td class="num">741/810</td><td class="num">6/45</td><td>13–18 (1.12)</td><td class="num">31.8</td><td>n.a. (CLI)</td><td class="num">$0 (plan)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <figure id="fig-results">
+        <img src="figures/results.svg" alt="Two charts. Left: mean rubric scores and ranges. MiniMax-M3 is 10.18, GLM-5.2 is 13.62, Claude Opus 4.8 is 16.78, and Simao 2 is 16.47. Right: quality versus marginal API cost. Simao 1 climbs from $0.24 to $7.40. Simao 2 sits at $0 with a score near Opus.">
+        <figcaption><strong>Figure 5.</strong> Left: rubric score means and observed ranges across N = 45 items. Right: Simao 1 achieves higher scores at higher observed API costs, whereas Simao 2 approaches Opus quality with no incremental per-query model charge within subscription limits.</figcaption>
+      </figure>
+
+      <div class="prose">
+        <p>Within Simao 1, weaker models fail on accounting caliber and side-taking even when they call the right tools. MiniMax-M3 ($0.24) stops its tool loop early and averages 10.18/18 with zero full marks. On Bitcoin mining (B1), it called <code>crypto_hashrate</code> and reported cash cost as full cost, ignoring its own attack agent’s warning. GLM-5.2 ($1.59) reaches 13.62/18 and properly separates GAAP loss from adjusted EBITDA on CoreWeave (C1), yet it misses probabilities and skips the quantitative margin bridge on Microsoft. Claude Opus 4.8 reaches 16.78/18 with seven perfect 18/18 scores, computing full margin bridges and dropping broken theses when challenged on S1. However, Claude generates 119k output and thinking tokens per run, pushing API cost to $7.40.</p>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <caption><strong>Table 4.</strong> Item-level rubric scores (/18) on three representative benchmark questions.</caption>
+          <thead>
+            <tr><th>Item</th><th>Task focus</th><th class="num">MiniMax</th><th class="num">GLM-5.2</th><th class="num">Opus 4.8</th><th class="num">Simao 2</th><th>Primary discriminator</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>B1</td><td>Bitcoin mining cost</td><td class="num">8/18</td><td class="num">14/18</td><td class="num">18/18</td><td class="num">18/18</td><td>3 cost layers + shutdown math</td></tr>
+            <tr><td>C1</td><td>CoreWeave memo</td><td class="num">11/18</td><td class="num">14/18</td><td class="num">17/18</td><td class="num">17/18</td><td>GAAP vs. EBITDA + 3 scenarios</td></tr>
+            <tr><td>MSFT</td><td>AI capex and margin</td><td class="num">9/18</td><td class="num">13/18</td><td class="num">17/18</td><td class="num">16/18</td><td>Numerical memory-to-Azure bridge</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="prose">
+        <p>Simao 2 resolves that cost-quality trade-off. GPT-6-Astra on Codex CLI totals 741/810 (<strong>16.47/18</strong>) with six perfect 18/18 scores at zero marginal API cost. Because Simao 2 is still under active development and adapting its skills and checks to Codex CLI after the live migration, its overall score remains slightly below the top Simao 1 run (16.78/18). Even so, on CoreWeave (C1, 17/18), Session 3’s blind math audit caught a free-cash-flow mismatch between the summary and valuation table and fixed it on retry; on S1, Codex rewrote its plan mid-thread when the supply frame broke. It trailed Opus by one point on Microsoft (16/18) only because its bear case held enterprise seat pricing static. Operationally, its main trade-off is runtime: 31.8 minutes per question versus 26.7 minutes for Claude, since three sequential CLI sessions wait for full text blocks. For deep fundamental research, trading five extra minutes to eliminate a $7.40 per-query bill is highly practical.</p>
+      </div>
+    </section>
+
+    <section id="implementation">
+      <h2>6. Implementation details</h2>
+      <div class="prose">
+        <p>Both systems share one tool and data backend on a single Mac Studio serving three client teams.</p>
+        <h3>6.1 Shared 53-tool registry and daily Mac Studio ingestion</h3>
+        <p>Our tool catalog spans six groups: listed companies (22 tools across SEC EDGAR, HKEX, CNINFO, and EDINET), macro (4), crypto and prediction markets (10), news (4), papers/code/history (8), and general/compute (5, including <code>python_calc</code>). Scheduled daily jobs on the Mac Studio ingest live sector indicators — GPU rental rates, new sell-side and industry reports, and Polymarket odds — while isolating client-specific crawlers and private retrieval indexes per fund. The full identifier list is in the appendix.</p>
+        <h3>6.2 Runtime guardrails in Simao 1 and Simao 2</h3>
+        <p>In <strong>Simao 1</strong>, Support and Attack agents start with only four base tools (<code>web_search</code>, <code>fetch_url</code>, <code>wikipedia_lookup</code>, <code>python_calc</code>) and dynamically request domain tools from the 53-tool catalog by name. Traces exceeding 80,000 characters trigger rolling compression that summarizes old outputs while preserving the last 3 tool results verbatim. If Forge produces fewer than 2 claims, Python promotes Scout’s tensions or injects 3 generic claims. An empty evidence ledger triggers a top-level warning banner, and multi-turn follow-ups pass the prior memo and ledger into Scout.</p>
+        <p>In <strong>Simao 2</strong>, strict sandboxing prevents hallucinated evidence inside Codex CLI. We disable Codex’s native web search and block network access in both the shell and the Python scratchpad, forcing all external data through our MCP server. Every fetched URL receives a permanent integer ID; the writer cites only IDs, and deterministic post-processing expands them into verified links. In Session 1, no claim can enter the brief unless an isolated red-team sub-agent tried to unseat it, and Adjudicate assigns one of five explicit states: <em>supported, weakly supported, qualified, contradicted, dropped</em>. If a long memo times out, a fallback writes a concise briefing from the verified brief. Across follow-up turns, transcripts exceeding context budgets compress into carry-packs with intact citation IDs.</p>
+      </div>
+    </section>
+
+    <section id="demo">
+      <h2>7. Demo</h2>
+      <div class="prose">
+        <p>Tamarix Research is live in production at <a href="https://tamarixresearch.com/">tamarixresearch.com</a>, actively serving three investment teams. Because the live workspace hosts confidential client queries, custom crawlers, and proprietary research lenses, we cannot share guest credentials. Instead we provide two recorded videos. Simao 1 and Simao 2 share the same user interface, so one product demo is enough. A second video is the full project presentation: the architecture walkthrough plus the demo.</p>
+      </div>
+      <ul class="demo-links">
+        <li><strong>Simao 1 demo video</strong> (same user interface as Simao 2) <span class="pending" id="demo-video-url">URL to be added</span></li>
+        <li><strong>Project presentation</strong> (full talk + demo) <span class="pending" id="presentation-url">URL to be added</span></li>
+      </ul>
+    </section>
+
+    <section id="conclusion">
+      <h2>8. Conclusion</h2>
+      <div class="prose">
+        <p>Building Tamarix Research showed both the value of academic methods and the gap between papers and live products. Academic rigor gave us our core tools. We replaced noisy stock-return backtests with a 45-question investor rubric and scored runs cheaply with GLM-5.2. We also adapted frontier RSI ideas into critic-assisted harness iteration, restricting edits to question-agnostic structural gates without touching model weights.</p>
+        <p>At the same time, real-world constraints reshaped every engineering decision. Our 45 questions act as a living verification bank, while unseen daily client queries form the real out-of-sample test. Simao 1 proved that Claude Opus 4.8 delivers real insights (16.78/18), but client preference for the top model created a $7.40 per-query bill. Moving that workflow into Simao 2 on Codex CLI — even surviving a sudden Claude Code suspension — kept top quality (16.47/18) inside a flat monthly plan. Combining rigorous evaluation with pragmatic harness engineering turned a strong LLM into a viable institutional research service.</p>
+      </div>
+    </section>
+
+    <section id="references">
+      <h2>References</h2>
+      <ol class="refs">
+        <li id="ref-mcp">Anthropic. Model Context Protocol. 2024. <a href="https://modelcontextprotocol.io">modelcontextprotocol.io</a>.</li>
+        <li>Jiawei Gu et al. A Survey on LLM-as-a-Judge. arXiv:2411.15594, 2024.</li>
+        <li>Yuxuan Huang et al. Deep Research Agents: A Systematic Examination and Roadmap. arXiv:2506.18096, 2025.</li>
+        <li>Haohang Li et al. InvestorBench: A Benchmark for Financial Decision-Making Tasks with LLM-based Agents. ACL, 2025.</li>
+        <li>Reiichiro Nakano et al. WebGPT: Browser-Assisted Question-Answering with Human Feedback. arXiv:2112.09332, 2021.</li>
+        <li>Noah Shinn et al. Reflexion: Language Agents with Verbal Reinforcement Learning. arXiv:2303.11366, 2023.</li>
+        <li>Yijia Xiao et al. TradingAgents: Multi-Agents LLM Financial Trading Framework. arXiv:2412.20138, 2024.</li>
+        <li>Hongyang Yang et al. FinRobot: An Open-Source AI Agent Platform for Financial Applications. arXiv:2405.14767, 2024.</li>
+        <li>Shunyu Yao et al. ReAct: Synergizing Reasoning and Acting in Language Models. ICLR, 2023.</li>
+        <li>Yangyang Yu et al. FinMem: A Performance-Enhanced LLM Trading Agent with Layered Memory and Character Design. arXiv:2311.13743, 2023.</li>
+        <li>Yangyang Yu et al. FinCon: A Synthesized LLM Multi-Agent System with Conceptual Verbal Reinforcement. arXiv:2407.06567, 2024.</li>
+        <li>Wentao Zhang et al. A Multimodal Foundation Agent for Financial Trading. KDD, 2024.</li>
+      </ol>
+    </section>
+
+    <section id="appendix">
+      <h2>Appendix</h2>
+      <h3>A. Benchmark schema and sample rubrics</h3>
+      <div class="prose">
+        <p>Each item stores <code>id</code>, <code>question</code> (translated from Chinese investor prompts for reporting), <code>label</code> (<code>original</code> or <code>follow_up</code>), and <code>mode</code> (<code>deep</code> for all 45 items). Two multi-turn items also store <code>session_from</code>: Q1 resumes K2 to audit hidden assumptions, and S1 resumes K4 to break its analytical frame. Because the prompts originate from live fund watchlists and proprietary investor frameworks, verbatim questions remain confidential. Live cases in the architecture section are anonymized, while the public-market items name the specific thesis angle (for example, memory-cost pass-through in MSFT) for the agent to verify and stress-test.</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <caption><strong>Table 5.</strong> The 21-category taxonomy of the 45-question benchmark.</caption>
+          <thead><tr><th>Category</th><th>Research task</th><th class="num">Count</th></tr></thead>
+          <tbody>
+            <tr><td>Asset allocation (A)</td><td>Long-horizon cross-asset allocation view</td><td class="num">1</td></tr>
+            <tr><td>Non-US view (D)</td><td>Identify blind spots in US-centric market consensus</td><td class="num">1</td></tr>
+            <tr><td>History (G)</td><td>Historical counterfactual analysis requiring a firm stance</td><td class="num">1</td></tr>
+            <tr><td>Paper explanation (F)</td><td>Technical breakdown of an academic paper with a verified URL</td><td class="num">1</td></tr>
+            <tr><td>Single-stock note (H)</td><td>Institutional-grade initiation note on one listed firm</td><td class="num">1</td></tr>
+            <tr><td>Cross-market insight (K)</td><td>Detect mispricing or structural breaks across linked markets</td><td class="num">2</td></tr>
+            <tr><td>Valuation math (L)</td><td>Full DCF or multiples valuation with explicit step-by-step math</td><td class="num">1</td></tr>
+            <tr><td>Reasoning method (M)</td><td>Bayesian updating and 1st/2nd/3rd-order effect separation</td><td class="num">2</td></tr>
+            <tr><td>Physical constraint (N)</td><td>First-principles engineering or physics bottleneck</td><td class="num">1</td></tr>
+            <tr><td>Cross-field analogy (P)</td><td>Structural mapping from an external discipline onto a market</td><td class="num">1</td></tr>
+            <tr><td>Assumption audit (Q)</td><td>Multi-turn follow-up from K2, auditing prior assumptions</td><td class="num">1</td></tr>
+            <tr><td>Framework challenge (S)</td><td>Multi-turn follow-up from K4, attacking the prior frame</td><td class="num">1</td></tr>
+            <tr><td>Company memos (T)</td><td>Full investment memo judging whether a company is a buy now</td><td class="num">4</td></tr>
+            <tr><td>Claim archaeology (U)</td><td>Audit past public predictions and extract error patterns</td><td class="num">2</td></tr>
+            <tr><td>Mixed tasks (V)</td><td>Fact bundles, behavioral finance puzzles, and methodology drills</td><td class="num">7</td></tr>
+            <tr><td>Ruleset screen (W)</td><td>Apply a multi-gate short-selling checklist to a target</td><td class="num">1</td></tr>
+            <tr><td>Focused company questions (C)</td><td>Focused long-or-short thesis on one named company</td><td class="num">4</td></tr>
+            <tr><td>Long-only memos (I)</td><td>Binary buy/pass memo with an explicit target entry price</td><td class="num">7</td></tr>
+            <tr><td>Macro and industry</td><td>AI capex payback, geopolitics, Bitcoin mining cost, US fiscal math</td><td class="num">4</td></tr>
+            <tr><td>Consensus vs. variant (MSFT)</td><td>Priced-in consensus vs. variant view, plus a margin bridge</td><td class="num">1</td></tr>
+            <tr><td>Rotation and book choice (ROT)</td><td>Sector rotation across three names in a concentrated book</td><td class="num">1</td></tr>
+            <tr class="total"><td>Total</td><td></td><td class="num">45</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="prose">
+        <p><strong>Question-specific checks (dimension 6).</strong></p>
+        <ul class="clean">
+          <li><strong>C1 (CoreWeave).</strong> Quantified bull and bear cases; GAAP net loss separated from adjusted EBITDA; 3 scenarios summing to 1.0 with expected value via <code>python_calc</code>; at least 3 company-specific risks; revenue growth, capex, free cash flow, debt, valuation multiple, and a clear recommendation.</li>
+          <li><strong>B1 (Bitcoin mining).</strong> Three cost layers (marginal power, cash operating cost, full cost with ASIC depreciation); rig shutdown price formula; hash-ribbon signal; at least 4 dated on-chain KPIs with primary sources.</li>
+          <li><strong>MSFT.</strong> Explicit list of priced-in consensus; a non-consensus variant on the AI capex payback horizon; an arithmetic bridge from DRAM/HBM memory prices to server bill of materials and Azure gross margin; stress-tested bull and bear catalysts. The prompt itself asks the agent to verify memory-cost pass-through.</li>
+        </ul>
+      </div>
+
+      <h3>B. Tool registry and guardrails</h3>
+      <div class="table-wrap">
+        <table class="tools">
+          <caption><strong>Table 6.</strong> The 53-tool registry shared by Simao 1 (Python catalog) and Simao 2 (MCP server).</caption>
+          <thead><tr><th>Group</th><th>Sources</th><th>Tool identifiers</th></tr></thead>
+          <tbody>
+            <tr><td>Listed companies (22)</td><td>SEC EDGAR, company IR, HKEX, CNINFO, EDINET, FMP, Logmi</td><td><code>equity_financials</code> <code>equity_statistics</code> <code>equity_fundamentals</code> <code>sec_filings</code> <code>sec_read_filing</code> <code>earnings_transcript</code> <code>company_ir</code> <code>stock_quote</code> <code>stock_history</code> <code>financial_statements</code> <code>equity_statements_fmp</code> <code>equity_insider_trading</code> <code>equity_institutional</code> <code>equity_hk_snapshot</code> <code>cninfo_filings</code> <code>cninfo_investor_relations</code> <code>hk_filings</code> <code>hk_earnings_notes</code> <code>edinet_filings</code> <code>edinet_download</code> <code>logmi_transcript</code> <code>read_pdf</code></td></tr>
+            <tr><td>Macro (4)</td><td>FRED, World Bank, China NBS</td><td><code>fred_series</code> <code>macro_indicators</code> <code>worldbank_indicator</code> <code>china_macro</code></td></tr>
+            <tr><td>Crypto and prediction markets (10)</td><td>Binance, on-chain feeds, Polymarket, Kalshi, Manifold, A-shares</td><td><code>crypto_market</code> <code>binance_klines</code> <code>crypto_fng</code> <code>crypto_hashrate</code> <code>crypto_network_stats</code> <code>crypto_cycle_indicators</code> <code>prediction_market</code> <code>kalshi_markets</code> <code>manifold_markets</code> <code>china_stock</code></td></tr>
+            <tr><td>News (4)</td><td>Finnhub, RSS, GDELT</td><td><code>news_search</code> <code>finnhub_news</code> <code>rss_headlines</code> <code>gdelt_events</code></td></tr>
+            <tr><td>Papers, code, history (8)</td><td>arXiv, OpenAlex, Crossref, GitHub, HN, Wikidata, Gutenberg, Wayback</td><td><code>arxiv_search</code> <code>openalex_search</code> <code>crossref_search</code> <code>github_search</code> <code>hackernews_search</code> <code>wikidata_query</code> <code>gutendex_books</code> <code>wayback_snapshot</code></td></tr>
+            <tr><td>General and compute (5)</td><td>Web, Wikipedia, local skills, Python sandbox</td><td><code>web_search</code> <code>fetch_url</code> <code>wikipedia_lookup</code> <code>load_skill</code> <code>python_calc</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <caption><strong>Table 7.</strong> Runtime caps, sandboxing, and deterministic fallbacks.</caption>
+          <thead><tr><th>Mechanism</th><th>Simao 1</th><th>Simao 2</th></tr></thead>
+          <tbody>
+            <tr><td>Scout cap</td><td>Hard stop at 2 rounds or 6 calls; forces a tool-off summary</td><td>About 6 MCP calls opening primary records and logging tensions</td></tr>
+            <tr><td>Claim fallback</td><td>3–6 claims; if fewer than 2, copies Scout tensions; if 0, injects 3 generic claims</td><td>Pre-tool plan defines 2–6 claims; rewrites the plan if the frame breaks</td></tr>
+            <tr><td>Adversarial agents</td><td>2 parallel agents per claim; max 10 rounds or 24 calls each</td><td>Prosecute plus a blind red team; unchallenged claims are barred from the brief</td></tr>
+            <tr><td>Re-investigation</td><td>At most 1 return wave (≤ 4 claims)</td><td>Five verdict states plus at most 1 gap-closing wave</td></tr>
+            <tr><td>Context overflow</td><td>Above 80,000 characters, summarize older outputs; keep the last 3 verbatim</td><td>Separate sessions; multi-turn overflow compressed into a carry-pack</td></tr>
+            <tr><td>Network and URLs</td><td>Post-draft citation check; empty-ledger warning banner</td><td>Native web and shell network disabled; MCP integer IDs expanded by code</td></tr>
+            <tr><td>Memo failure / audit</td><td>Appends up to 8 open questions; the checker never rewrites prose</td><td>Stub returns to the writer; Session 3 allows 1 retry</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>C. API pricing and case diagnostics</h3>
+      <div class="prose">
+        <p>Costs sum list rates across every call in the pipeline without prompt-caching discounts. No single call exceeded 512k tokens, so MiniMax’s higher long-context tier was never triggered. For Claude Opus 4.8, output tokens include extended thinking tokens.</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <caption><strong>Table 8.</strong> Token usage and API cost per question in Simao 1.</caption>
+          <thead>
+            <tr><th>Model</th><th class="num">Mean in</th><th class="num">Mean out</th><th>Price per 1M (in/out)</th><th class="num">Cost/Q</th><th>Notes</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>MiniMax-M3</td><td class="num">642k</td><td class="num">41k</td><td>$0.30 / $1.20</td><td class="num">$0.24</td><td>All calls under 512k; standard tier</td></tr>
+            <tr><td>GLM-5.2</td><td class="num">905k</td><td class="num">74k</td><td>$1.40 / $4.40</td><td class="num">$1.59</td><td>No cache discount applied</td></tr>
+            <tr><td>Claude Opus 4.8</td><td class="num">885k</td><td class="num">119k</td><td>$5.00 / $25.00</td><td class="num">$7.40</td><td>Output includes thinking tokens</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <caption><strong>Table 9.</strong> Failure modes on four representative items.</caption>
+          <thead>
+            <tr><th>Case</th><th>MiniMax-M3</th><th>GLM-5.2</th><th>Claude Opus 4.8</th><th>Simao 2 (GPT-6-Astra)</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>B1 mining</td>
+              <td><strong>8/18.</strong> Called hashrate data but treated cash cost as full cost and ignored the attack warning. No shutdown math.</td>
+              <td><strong>14/18.</strong> Split 3 cost layers and gave shutdown bands for 2 rigs; stopped at 3 on-chain KPIs.</td>
+              <td><strong>18/18.</strong> All 3 layers, shutdown formula, hash ribbons, 4 dated KPIs, and a critique of media headlines.</td>
+              <td><strong>18/18.</strong> All 3 layers, scratchpad shutdown math, hash ribbons, and 4 KPIs linked by MCP source IDs.</td>
+            </tr>
+            <tr>
+              <td>C1 CoreWeave</td>
+              <td><strong>11/18.</strong> Secondary web multiple; no bear numbers; mixed GAAP net loss with adjusted EBITDA.</td>
+              <td><strong>14/18.</strong> Separated GAAP and EBITDA from the filing; only 2 scenarios, no probabilities; unlinked risks.</td>
+              <td><strong>17/18.</strong> 3 scenarios summing to 1.0 via <code>python_calc</code>; linked concentration to debt; one secondary multiple (−1).</td>
+              <td><strong>17/18.</strong> 3 scenarios; Session 3 caught and fixed a free-cash-flow mismatch; one secondary debt note (−1).</td>
+            </tr>
+            <tr>
+              <td>MSFT</td>
+              <td><strong>9/18.</strong> Restated OpenAI/Copilot consensus; mentioned memory prices with no margin math.</td>
+              <td><strong>13/18.</strong> Variant was already sell-side consensus; stated that memory “pressures” cost without computing the bridge.</td>
+              <td><strong>17/18.</strong> Clear payback variant and a memory-to-Azure bridge; used a one-quarter spot DRAM price (−1).</td>
+              <td><strong>16/18.</strong> Clear variant and a scratchpad bridge; spot DRAM (−1) and a static bear case on seat pricing (−1).</td>
+            </tr>
+            <tr>
+              <td>S1 frame break</td>
+              <td>Added a verbal hedge that demand “could matter” while keeping the supply-only conclusion.</td>
+              <td>Listed a demand-shock path beside the supply path without choosing or re-ranking holdings.</td>
+              <td>Dropped the invalidated supply-only thesis and re-ranked target stocks under an AI capex cut.</td>
+              <td>Triggered a mid-thread frame break, rewrote the plan, and re-ranked holdings under the capex cut.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer class="colophon">
+      <p>IERG 5050, Fall 2026, Option 1. Student 1155245846. The live service is at <a href="https://tamarixresearch.com/">tamarixresearch.com</a>. Client queries and private research lenses stay off this page.</p>
+    </footer>
+  </main>
+</body>
+</html>
