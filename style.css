@@ -9,8 +9,6 @@
   --link-hover: #0f3260;
   --accent: #8c3b12;
   --code: #f6f1e7;
-  --pending: #8a5a12;
-  --pending-bg: #fff6e4;
   --max: 44rem;
   --wide: 52rem;
 }
@@ -245,16 +243,7 @@ tr.total td { border-bottom: none; font-weight: 600; }
   background: #fffaf2;
 }
 
-.pending {
-  display: inline-block;
-  margin-left: 0.35rem;
-  padding: 0.05rem 0.45rem;
-  background: var(--pending-bg);
-  color: var(--pending);
-  font-family: "Avenir Next", "Segoe UI", sans-serif;
-  font-size: 0.82rem;
-  letter-spacing: 0.02em;
-}
+.demo-links a { overflow-wrap: anywhere; }
 
 figure.demo-shot {
   margin: 1.05rem 0 1.55rem;
